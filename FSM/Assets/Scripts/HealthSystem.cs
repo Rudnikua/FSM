@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 public class HealthSystem : MonoBehaviour, IDamageable {
@@ -7,6 +8,11 @@ public class HealthSystem : MonoBehaviour, IDamageable {
     [SerializeField] private bool isPlayer = false;
 
     private float currentHealth;
+
+    public event EventHandler<HealthBarChangedEventArgs> OnHealthChanged;
+
+    public float MaxHealth => maxHealth;
+    public float CurrentHealth => currentHealth;
 
     private void Awake() {
         currentHealth = maxHealth;
@@ -18,6 +24,8 @@ public class HealthSystem : MonoBehaviour, IDamageable {
         currentHealth = Mathf.Max(currentHealth, 0);
 
         Debug.Log($"<b>[{gameObject.name}]<b> - {damage}HP -> {currentHealth}/{maxHealth}");
+
+        OnHealthChanged?.Invoke(this, new HealthBarChangedEventArgs(currentHealth, maxHealth));
 
         if (currentHealth <= 0) {
             Die();
