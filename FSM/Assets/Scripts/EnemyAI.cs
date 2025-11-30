@@ -51,6 +51,12 @@ public class EnemyAI : MonoBehaviour {
         animator = GetComponent<Animator>();
         agent.updateRotation = true;
         agent.angularSpeed = 500f;
+
+        if (player != null) {
+            lastSeenPlayerPosition = player.position;
+        } else {
+            lastSeenPlayerPosition = transform.position;
+        }
     }
 
     private void Start() {
@@ -80,7 +86,7 @@ public class EnemyAI : MonoBehaviour {
                     SetState(State.Chase);
                 break;
             case State.Chase:
-                if (!hasLOS && distanceToPlayer <= aggroRange) 
+                if (!hasLOS && distanceToPlayer <= aggroRange)
                     SetState(State.Search);
                 else if (distanceToPlayer > aggroRange)
                     SetState(State.Search);
@@ -94,13 +100,13 @@ public class EnemyAI : MonoBehaviour {
                     SetState(State.Search);
                 else if (distanceToPlayer > attackRange && hasLOS)
                     SetState(State.Chase);
-                    break;
+                break;
             case State.Search:
                 if (hasLOS)
                     SetState(State.Chase);
                 else if (distanceToPlayer > aggroRange * 2f)
                     SetState(State.Patrol);
-                    break;
+                break;
         }
     }
 
@@ -114,7 +120,7 @@ public class EnemyAI : MonoBehaviour {
                 ChaseBehavior();
                 break;
             case State.Attack:
-                AttackBehavior(); 
+                AttackBehavior();
                 break;
             case State.Search:
                 SearchBehavior();
@@ -189,7 +195,6 @@ public class EnemyAI : MonoBehaviour {
             animator.SetTrigger(AttackHash);
             timeSinceLastAttack = 0;
         }
-        UpdateAnimatorSpeed();
     }
 
     private void SearchBehavior() {
