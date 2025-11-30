@@ -23,7 +23,7 @@ public class HealthSystem : MonoBehaviour, IDamageable {
         currentHealth -= damage;
         currentHealth = Mathf.Max(currentHealth, 0);
 
-        Debug.Log($"<b>[{gameObject.name}]<b> - {damage}HP -> {currentHealth}/{maxHealth}");
+        //Debug.Log($"<b>[{gameObject.name}]<b> - {damage}HP -> {currentHealth}/{maxHealth}");
 
         OnHealthChanged?.Invoke(this, new HealthBarChangedEventArgs(currentHealth, maxHealth));
 

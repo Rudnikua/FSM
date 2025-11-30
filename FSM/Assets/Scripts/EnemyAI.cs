@@ -6,7 +6,8 @@ public class EnemyAI : MonoBehaviour {
     private enum State {
         Patrol,
         Chase,
-        Attack
+        Attack,
+        Search
     }
 
     private State currentState = State.Patrol;
@@ -17,7 +18,7 @@ public class EnemyAI : MonoBehaviour {
 
     [Header("Detection")]
     [SerializeField] private float aggroRange = 7f;
-    [SerializeField] private float attackRange = 7f;
+    [SerializeField] private float attackRange = 2f;
     [SerializeField] private float lineOfSightCheckRate = 0.3f;
 
     [Header("Combat")]
@@ -27,15 +28,23 @@ public class EnemyAI : MonoBehaviour {
     [SerializeField] private float patrolWaitTime = 1f;
     [SerializeField] private float patrolPointRadius = 0.5f;
 
+    [Header("Search")]
+    [SerializeField] private float searchDuration = 3f;
+
     private NavMeshAgent agent;
     private Animator animator;
     private float timeSinceLastAttack;
     private float timeSinceLOS;
+    private bool lastLOSResult = false;
+    private bool isSearchingInPlace = false;
     private int currentPatrolIndex = 0;
     private float patrolTimer;
+    private Vector3 lastSeenPlayerPosition;
+    private float searchTimer = 0f;
 
     private static readonly int SpeedHash = Animator.StringToHash("Speed");
     private static readonly int AttackHash = Animator.StringToHash("Attack");
+    private static readonly int SearchHash = Animator.StringToHash("Search");
 
     private void Awake() {
         agent = GetComponent<NavMeshAgent>();
@@ -49,6 +58,9 @@ public class EnemyAI : MonoBehaviour {
     }
 
     private void Update() {
+        Debug.Log($"{name}: {currentState}");
+        Debug.Log($"Is searching in place: {isSearchingInPlace}");
+        Debug.Log(searchTimer);
         float distanceToPlayer = Vector3.Distance(transform.position, player.position);
         bool hasLOS = HasLineOfSight();
 
@@ -58,21 +70,37 @@ public class EnemyAI : MonoBehaviour {
     }
 
     private void UpdateState(float distanceToPlayer, bool hasLOS) {
+        if (hasLOS) {
+            lastSeenPlayerPosition = player.position;
+        }
+
         switch (currentState) {
             case State.Patrol:
                 if (distanceToPlayer <= aggroRange && hasLOS)
                     SetState(State.Chase);
                 break;
             case State.Chase:
-                if (distanceToPlayer <= attackRange && hasLOS)
+                if (!hasLOS && distanceToPlayer <= aggroRange) 
+                    SetState(State.Search);
+                else if (distanceToPlayer > aggroRange)
+                    SetState(State.Search);
+                else if (distanceToPlayer <= attackRange && hasLOS)
                     SetState(State.Attack);
-                else if (distanceToPlayer > aggroRange || !hasLOS)
-                    SetState(State.Patrol);
                 break;
             case State.Attack:
-                if (distanceToPlayer > attackRange || !hasLOS)
+                if (!hasLOS && distanceToPlayer <= aggroRange)
+                    SetState(State.Search);
+                else if (distanceToPlayer > aggroRange)
+                    SetState(State.Search);
+                else if (distanceToPlayer > attackRange && hasLOS)
                     SetState(State.Chase);
-                break;
+                    break;
+            case State.Search:
+                if (hasLOS)
+                    SetState(State.Chase);
+                else if (distanceToPlayer > aggroRange * 2f)
+                    SetState(State.Patrol);
+                    break;
         }
     }
 
@@ -88,6 +116,9 @@ public class EnemyAI : MonoBehaviour {
             case State.Attack:
                 AttackBehavior(); 
                 break;
+            case State.Search:
+                SearchBehavior();
+                break;
         }
     }
 
@@ -97,7 +128,7 @@ public class EnemyAI : MonoBehaviour {
         OnExitState(currentState);
 
         currentState = newState;
-        Debug.Log($"{name}: {currentState}");
+        //Debug.Log($"{name}: {currentState}");
 
         OnEnterState(currentState);
     }
@@ -105,6 +136,7 @@ public class EnemyAI : MonoBehaviour {
     private void OnEnterState(State state) {
         switch (state) {
             case State.Patrol:
+                agent.isStopped = false;
                 StartPatrol();
                 break;
             case State.Chase:
@@ -113,6 +145,12 @@ public class EnemyAI : MonoBehaviour {
             case State.Attack:
                 agent.isStopped = true;
                 agent.velocity = Vector3.zero;
+                break;
+            case State.Search:
+                agent.isStopped = false;
+                searchTimer = 0f;
+                isSearchingInPlace = false;
+                agent.SetDestination(lastSeenPlayerPosition);
                 break;
         }
     }
@@ -151,6 +189,29 @@ public class EnemyAI : MonoBehaviour {
             animator.SetTrigger(AttackHash);
             timeSinceLastAttack = 0;
         }
+        UpdateAnimatorSpeed();
+    }
+
+    private void SearchBehavior() {
+
+        if (!isSearchingInPlace) {
+            agent.SetDestination(lastSeenPlayerPosition);
+            UpdateAnimatorSpeed();
+
+            if (!agent.pathPending && agent.remainingDistance <= 0.5f) {
+                agent.isStopped = true;
+                isSearchingInPlace = true;
+                searchTimer = 0f;
+                animator.SetTrigger(SearchHash);
+            }
+        } else {
+            searchTimer += Time.deltaTime;
+
+            float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+            if (searchTimer >= searchDuration) {
+                SetState(State.Patrol);
+            }
+        }
     }
     private void StartPatrol() {
         if (patrolPoints.Length == 0) {
@@ -172,18 +233,23 @@ public class EnemyAI : MonoBehaviour {
 
     private bool HasLineOfSight() {
         timeSinceLOS += Time.deltaTime;
-        if (timeSinceLOS < lineOfSightCheckRate) return true;
+        if (timeSinceLOS < lineOfSightCheckRate) return lastLOSResult;
 
         timeSinceLOS = 0;
 
-        Vector3 direction = player.position - (transform.position - Vector3.up);
+        Vector3 origin = transform.position + transform.forward * 0.4f + Vector3.up * 1.4f;
+        Vector3 target = player.position + Vector3.up * 1.6f;
+        Vector3 direction = target - origin;
         float distance = direction.magnitude;
 
-        if (Physics.Raycast(transform.position + Vector3.up, direction, out RaycastHit hit, distance)) {
-            return hit.transform.CompareTag("Player");
-        }
+        Debug.DrawRay(origin, direction, lastLOSResult ? Color.green : Color.red, lineOfSightCheckRate);
 
-        return false;
+        bool hitPlayer = Physics.Raycast(origin, direction, out RaycastHit hit, distance);
+        if (hitPlayer && hit.transform.CompareTag("Player")) {
+            lastLOSResult = true;
+        } else lastLOSResult = false;
+        Debug.Log(lastLOSResult);
+        return lastLOSResult;
     }
 
     private void OnDrawGizmosSelected() {
