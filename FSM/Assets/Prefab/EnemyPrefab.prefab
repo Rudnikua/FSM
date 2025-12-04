@@ -47,6 +47,7 @@ GameObject:
   - component: {fileID: 7362523965210130718}
   - component: {fileID: 8440339179508617595}
   - component: {fileID: 6114364093466718251}
+  - component: {fileID: 4025866928695677638}
   m_Layer: 6
   m_Name: EnemyPrefab
   m_TagString: Enemy
@@ -136,6 +137,7 @@ MonoBehaviour:
   attackCD: 2
   patrolWaitTime: 1
   patrolPointRadius: 0.5
+  searchDuration: 3
 --- !u!195 &7362523965210130718
 NavMeshAgent:
   m_ObjectHideFlags: 0
@@ -185,6 +187,26 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DisableEnableCollider
   currentWeaponInHand: {fileID: 3500404098858193248}
+--- !u!114 &4025866928695677638
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7527264755415998078}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1e3fdca004f2d45fe8abbed571a8abd5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshModifier
+  m_SerializedVersion: 0
+  m_OverrideArea: 0
+  m_Area: 0
+  m_OverrideGenerateLinks: 0
+  m_GenerateLinks: 0
+  m_IgnoreFromBuild: 1
+  m_ApplyToChildren: 1
+  m_AffectedAgents: ffffffff
 --- !u!1001 &820854035083991723
 PrefabInstance:
   m_ObjectHideFlags: 0

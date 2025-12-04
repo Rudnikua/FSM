@@ -195,6 +195,8 @@ public class EnemyAI : MonoBehaviour {
             animator.SetTrigger(AttackHash);
             timeSinceLastAttack = 0;
         }
+
+        UpdateAnimatorSpeed();
     }
 
     private void SearchBehavior() {
