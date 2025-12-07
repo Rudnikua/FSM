@@ -129,6 +129,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c7ad03fa8de2e5442a4ab7d880fa234e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::EnemyAI
+  difficulty: 1
+  useCastomValues: 0
+  customSettings:
+    aggroRangeMultiplier: 1
+    attackRangeMultiplier: 1
+    attackCooldownMultiplier: 1
+    searchDurationMultiplier: 1
+    patrolSpeedMultiplier: 1
+    chaseSpeedMultiplier: 1
   player: {fileID: 0}
   patrolPoints: []
   aggroRange: 7

@@ -1,8 +1,54 @@
+using NUnit.Framework;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.AI;
 
 public class EnemyAI : MonoBehaviour {
+    public enum Difficulty {
+        Easy = 0,
+        Medium = 1,
+        Hard = 2
+    }
+
+    [System.Serializable]
+    public class DifficultySettings {
+
+        public float aggroRangeMultiplier = 1f;
+        public float attackRangeMultiplier = 1f;
+        public float attackCooldownMultiplier = 1f;
+        public float searchDurationMultiplier = 1f;
+        public float patrolSpeedMultiplier = 1f;
+        public float chaseSpeedMultiplier = 1f;
+
+        public static DifficultySettings Medium => new DifficultySettings {
+            aggroRangeMultiplier = 1f,
+            attackRangeMultiplier = 1f,
+            attackCooldownMultiplier = 1f,
+            searchDurationMultiplier = 1f,
+            patrolSpeedMultiplier = 1f,
+            chaseSpeedMultiplier = 1f,
+        };
+
+        public static DifficultySettings Easy => new DifficultySettings {
+            aggroRangeMultiplier = 0.7f,
+            attackRangeMultiplier = 0.8f,
+            attackCooldownMultiplier = 1.5f,
+            searchDurationMultiplier = 0.5f,
+            patrolSpeedMultiplier = 0.8f,
+            chaseSpeedMultiplier = 0.8f,
+        };
+
+        public static DifficultySettings Hard => new DifficultySettings {
+            aggroRangeMultiplier = 1.3f,
+            attackRangeMultiplier = 1.1f,
+            attackCooldownMultiplier = 0.7f,
+            searchDurationMultiplier = 2f,
+            patrolSpeedMultiplier = 1.1f,
+            chaseSpeedMultiplier = 1.2f,
+        };
+    }
     private enum State {
         Patrol,
         Chase,
@@ -12,25 +58,43 @@ public class EnemyAI : MonoBehaviour {
 
     private State currentState = State.Patrol;
 
+    [Header("Difficulty")]
+    [SerializeField] private Difficulty difficulty = Difficulty.Medium;
+    [SerializeField] private bool useCastomValues = false;
+    [SerializeField] private DifficultySettings customSettings = new DifficultySettings();
+
     [Header("References")]
     [SerializeField] private Transform player;
     [SerializeField] private Transform[] patrolPoints;
 
-    [Header("Detection")]
-    [SerializeField] private float aggroRange = 7f;
-    [SerializeField] private float attackRange = 2f;
+    [Header("Detection (Base Values)")]
+    [SerializeField] private float baseAggroRange = 7f;
+    [SerializeField] private float baseAttackRange = 2f;
     [SerializeField] private float lineOfSightCheckRate = 0.3f;
 
-    [Header("Combat")]
-    [SerializeField] private float attackCD = 2f;
+    [Header("Combat (Base Values)")]
+    [SerializeField] private float baseAttackCD = 2f;
 
     [Header("Patrol")]
     [SerializeField] private float patrolWaitTime = 1f;
     [SerializeField] private float patrolPointRadius = 0.5f;
 
-    [Header("Search")]
-    [SerializeField] private float searchDuration = 3f;
+    [Header("Patrol & Search (Base Values)")]
+    [SerializeField] private float baseSpeed = 3.5f;
+    [SerializeField] private float basePatrolSpeed = 3.5f;
+    [SerializeField] private float baseChaseSpeed = 4f;
+    [SerializeField] private float baseSearchDuration = 3f;
 
+    // A* 
+    private Pathfinding pathfinder;
+    private List<Vector3> currentPath;
+    private int currentPathIndex;
+    private float pathUpdateTimer;
+    private Vector3 manualVelocity;
+    private Vector3 lastPosition;
+    //
+
+    private DifficultySettings currentSettings;
     private NavMeshAgent agent;
     private Animator animator;
     private float timeSinceLastAttack;
@@ -41,6 +105,8 @@ public class EnemyAI : MonoBehaviour {
     private float patrolTimer;
     private Vector3 lastSeenPlayerPosition;
     private float searchTimer = 0f;
+    private float effectiveAgrroRange;
+    private float effectiveAttackRange;
 
     private static readonly int SpeedHash = Animator.StringToHash("Speed");
     private static readonly int AttackHash = Animator.StringToHash("Attack");
@@ -49,8 +115,19 @@ public class EnemyAI : MonoBehaviour {
     private void Awake() {
         agent = GetComponent<NavMeshAgent>();
         animator = GetComponent<Animator>();
-        agent.updateRotation = true;
-        agent.angularSpeed = 500f;
+
+        pathfinder = FindAnyObjectByType<Pathfinding>();
+        if (pathfinder == null) Debug.LogError("Pathfinder is NULL");
+
+        if (agent != null) {
+            agent.updatePosition = false;
+            agent.updateRotation = false;
+            agent.isStopped = true; 
+        }
+
+        UpdateDifficultySettings();
+
+        if (agent.speed == 0) agent.speed = baseChaseSpeed * currentSettings.chaseSpeedMultiplier; 
 
         if (player != null) {
             lastSeenPlayerPosition = player.position;
@@ -64,6 +141,9 @@ public class EnemyAI : MonoBehaviour {
     }
 
     private void Update() {
+        manualVelocity = (transform.position - lastPosition) / Time.deltaTime;
+        lastPosition = transform.position;
+
         Debug.Log($"{name}: {currentState}");
         Debug.Log($"Is searching in place: {isSearchingInPlace}");
         Debug.Log(searchTimer);
@@ -76,35 +156,38 @@ public class EnemyAI : MonoBehaviour {
     }
 
     private void UpdateState(float distanceToPlayer, bool hasLOS) {
+        effectiveAgrroRange = baseAggroRange * currentSettings.aggroRangeMultiplier;
+        effectiveAttackRange = baseAttackRange * currentSettings.attackRangeMultiplier;
+
         if (hasLOS) {
             lastSeenPlayerPosition = player.position;
         }
 
         switch (currentState) {
             case State.Patrol:
-                if (distanceToPlayer <= aggroRange && hasLOS)
+                if (distanceToPlayer <= effectiveAgrroRange && hasLOS)
                     SetState(State.Chase);
                 break;
             case State.Chase:
-                if (!hasLOS && distanceToPlayer <= aggroRange)
+                if (!hasLOS && distanceToPlayer <= effectiveAgrroRange)
                     SetState(State.Search);
-                else if (distanceToPlayer > aggroRange)
+                else if (distanceToPlayer > effectiveAgrroRange)
                     SetState(State.Search);
-                else if (distanceToPlayer <= attackRange && hasLOS)
+                else if (distanceToPlayer <= effectiveAttackRange && hasLOS)
                     SetState(State.Attack);
                 break;
             case State.Attack:
-                if (!hasLOS && distanceToPlayer <= aggroRange)
+                if (!hasLOS && distanceToPlayer <= effectiveAgrroRange)
                     SetState(State.Search);
-                else if (distanceToPlayer > aggroRange)
+                else if (distanceToPlayer > effectiveAgrroRange)
                     SetState(State.Search);
-                else if (distanceToPlayer > attackRange && hasLOS)
+                else if (distanceToPlayer > effectiveAttackRange && hasLOS)
                     SetState(State.Chase);
                 break;
             case State.Search:
                 if (hasLOS)
                     SetState(State.Chase);
-                else if (distanceToPlayer > aggroRange * 2f)
+                else if (distanceToPlayer > effectiveAgrroRange * 2f)
                     SetState(State.Patrol);
                 break;
         }
@@ -140,6 +223,9 @@ public class EnemyAI : MonoBehaviour {
     }
 
     private void OnEnterState(State state) {
+        currentPath = null;
+        currentPathIndex = 0;
+
         switch (state) {
             case State.Patrol:
                 agent.isStopped = false;
@@ -156,7 +242,7 @@ public class EnemyAI : MonoBehaviour {
                 agent.isStopped = false;
                 searchTimer = 0f;
                 isSearchingInPlace = false;
-                agent.SetDestination(lastSeenPlayerPosition);
+                RequestPath(lastSeenPlayerPosition);
                 break;
         }
     }
@@ -164,23 +250,62 @@ public class EnemyAI : MonoBehaviour {
     private void OnExitState(State state) {
     }
 
+    private void RequestPath(Vector3 targetPos) {
+        if (pathfinder != null) {
+            currentPath = pathfinder.FindPath(transform.position, targetPos);
+            currentPathIndex = 0;
+        }
+    }
+
+    private void MoveAlongPath(float speed) {
+        if (currentPath == null || currentPathIndex >= currentPath.Count) return;
+
+        Vector3 targetPoint = currentPath[currentPathIndex];
+
+        Vector3 targetPosFlat = new Vector3(targetPoint.x, transform.position.y, targetPoint.z);
+        Vector3 myPosFlat = new Vector3(transform.position.x, transform.position.y, transform.position.z);
+
+        Vector3 direction = (targetPosFlat - myPosFlat).normalized;
+        transform.position += direction * speed * Time.deltaTime;
+
+        if (direction != Vector3.zero) {
+            Quaternion lookRotation = Quaternion.LookRotation(direction);
+            float rotationSpeed = 10f;
+            transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, Time.deltaTime * rotationSpeed);
+        }
+
+        if (Vector3.Distance(myPosFlat, targetPosFlat) < 0.2f) {
+            currentPathIndex++;
+        }
+    }
+
     private void PatrolBehavior() {
-        if (agent.remainingDistance <= patrolPointRadius && !agent.pathPending) {
+        if (currentPath == null || currentPathIndex >= currentPath.Count) {
             if (patrolTimer <= 0) {
                 currentPatrolIndex = (currentPatrolIndex + 1) % patrolPoints.Length;
-                agent.SetDestination(patrolPoints[currentPatrolIndex].position);
+
+                RequestPath(patrolPoints[currentPatrolIndex].position);
+
                 patrolTimer = patrolWaitTime;
             } else {
                 patrolTimer -= Time.deltaTime;
             }
+        } else {
+            MoveAlongPath(basePatrolSpeed * currentSettings.patrolSpeedMultiplier);
         }
 
-        UpdateAnimatorSpeed();
+            UpdateAnimatorSpeed(basePatrolSpeed);
     }
 
     private void ChaseBehavior() {
-        agent.SetDestination(player.position);
-        UpdateAnimatorSpeed();
+        pathUpdateTimer += Time.deltaTime;
+        if (pathUpdateTimer > 0.2f) {
+            RequestPath(player.position);
+            pathUpdateTimer = 0f;
+        }
+
+        MoveAlongPath(baseChaseSpeed * currentSettings.chaseSpeedMultiplier);
+        UpdateAnimatorSpeed(baseChaseSpeed);
     }
 
     private void AttackBehavior() {
@@ -191,31 +316,32 @@ public class EnemyAI : MonoBehaviour {
         }
 
         timeSinceLastAttack += Time.deltaTime;
-        if (timeSinceLastAttack >= attackCD) {
+        if (timeSinceLastAttack >= baseAttackCD * currentSettings.attackCooldownMultiplier) {
             animator.SetTrigger(AttackHash);
             timeSinceLastAttack = 0;
         }
 
-        UpdateAnimatorSpeed();
+        UpdateAnimatorSpeed(baseChaseSpeed);
     }
 
     private void SearchBehavior() {
 
         if (!isSearchingInPlace) {
-            agent.SetDestination(lastSeenPlayerPosition);
-            UpdateAnimatorSpeed();
+            MoveAlongPath(baseChaseSpeed * currentSettings.chaseSpeedMultiplier);
+            UpdateAnimatorSpeed(baseChaseSpeed);
 
-            if (!agent.pathPending && agent.remainingDistance <= 0.5f) {
-                agent.isStopped = true;
-                isSearchingInPlace = true;
-                searchTimer = 0f;
-                animator.SetTrigger(SearchHash);
+            if (currentPath == null || currentPathIndex >= currentPath.Count) {
+                if (Vector3.Distance(transform.position, lastSeenPlayerPosition) < 1.0f) {
+                    isSearchingInPlace = true;
+                    searchTimer = 0f;
+                    animator.SetTrigger(SearchHash);
+                }
             }
         } else {
             searchTimer += Time.deltaTime;
+            float effectiveSearchDuration = baseSearchDuration * currentSettings.searchDurationMultiplier;
 
-            float distanceToPlayer = Vector3.Distance(transform.position, player.position);
-            if (searchTimer >= searchDuration) {
+            if (searchTimer >= effectiveSearchDuration) {
                 SetState(State.Patrol);
             }
         }
@@ -223,19 +349,36 @@ public class EnemyAI : MonoBehaviour {
     private void StartPatrol() {
         if (patrolPoints.Length == 0) {
             Debug.LogWarning("No patrol points assigned!");
-            agent.isStopped = true;
             return;
         }
 
         currentPatrolIndex = Random.Range(0, patrolPoints.Length);
-        agent.SetDestination(patrolPoints[currentPatrolIndex].position);
+        RequestPath(patrolPoints[currentPatrolIndex].position);
         patrolTimer = patrolWaitTime;
     }
-    private void UpdateAnimatorSpeed() {
-        float speed = agent.velocity.magnitude;
-        float normilizedspeed = speed / agent.speed;
-        if (normilizedspeed < 0.05f) normilizedspeed = 0f;
-        animator.SetFloat(SpeedHash, normilizedspeed);
+    private void UpdateDifficultySettings() {
+        if (useCastomValues) {
+            currentSettings = customSettings;
+        } else {
+            switch (difficulty) {
+                case Difficulty.Easy:
+                    currentSettings = DifficultySettings.Easy;
+                    break;
+                case Difficulty.Hard:
+                    currentSettings = DifficultySettings.Hard;
+                    break;
+                default: 
+                    currentSettings = DifficultySettings.Medium;
+                    break;
+            }
+        }
+    }
+    private void UpdateAnimatorSpeed(float maxSpeed) {
+        float speed = manualVelocity.magnitude;
+        float normalizedSpeed = speed / maxSpeed;
+
+        if (normalizedSpeed < 0.05f) normalizedSpeed = 0f;
+        animator.SetFloat(SpeedHash, normalizedSpeed);
     }
 
     private bool HasLineOfSight() {
@@ -262,21 +405,21 @@ public class EnemyAI : MonoBehaviour {
     private void OnDrawGizmosSelected() {
         if (patrolPoints != null) {
             Gizmos.color = Color.cyan;
-            for (int i = 0; i < patrolPoints.Length; i++) {
-                if (patrolPoints[i] != null) {
-                    Gizmos.DrawSphere(patrolPoints[i].position, 0.3f);
-                    if (i < patrolPoints.Length - 1) {
-                        Gizmos.DrawLine(patrolPoints[i].position, patrolPoints[i + 1].position);
-                    } else if (patrolPoints.Length > 1) {
-                        Gizmos.DrawLine(patrolPoints[i].position, patrolPoints[0].position);
-                    }
-                }
+            foreach (Transform patrolPoint in patrolPoints) {
+                if (patrolPoint != null) Gizmos.DrawSphere(patrolPoint.position, 0.3f);
             }
         }
 
         Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(transform.position, aggroRange);
+        Gizmos.DrawWireSphere(transform.position, effectiveAgrroRange);
         Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(transform.position, attackRange);
+        Gizmos.DrawWireSphere(transform.position, effectiveAttackRange);
+
+        if (currentPath != null) {
+            Gizmos.color = Color.blue;
+            for (int i = currentPathIndex; i < currentPath.Count; i++) {
+                Gizmos.DrawLine(currentPath[i], currentPath[i + 1]);
+            }
+        }
     }
 }
