@@ -5,11 +5,15 @@ using UnityEngine;
 public class Pathfinding : MonoBehaviour {
 
     [SerializeField] private GridMap grid;
-    [SerializeField] Transform seeker, target;
+    [SerializeField] Transform[] seeker, target;
 
     public List<Vector3> FindPath(Vector3 startPos, Vector3 targetPos) {
         Node startNode = grid.NodeFromWorldPoint(startPos);
         Node targetNode = grid.NodeFromWorldPoint(targetPos);
+
+        if (!targetNode.walkable) {
+            targetNode = FindClosestWalkableNode(targetNode);
+        }
 
         List<Node> openSet = new List<Node>();
         HashSet<Node> closedSet = new HashSet<Node>();
@@ -67,6 +71,30 @@ public class Pathfinding : MonoBehaviour {
         foreach (Node node in path) waypoints.Add(node.worldPosition);
 
         return waypoints;
+    }
+
+    private Node FindClosestWalkableNode(Node targetNode) {
+        Queue<Node> queue = new Queue<Node>();
+        HashSet<Node> visited = new HashSet<Node>();
+
+        queue.Enqueue(targetNode);
+        visited.Add(targetNode);
+
+        while (queue.Count > 0) {
+            Node currentNode = queue.Dequeue();
+
+            if (currentNode.walkable) {
+                return currentNode;
+            }
+
+            foreach (Node neighbour in grid.GetNeighbours(currentNode)) {
+                if (!visited.Contains(neighbour)) {
+                    visited.Add(neighbour);
+                    queue.Enqueue(neighbour);
+                }
+            }
+        }
+        return null;
     }
 
     private int GetDistance(Node nodeA, Node nodeB) {

@@ -94,8 +94,13 @@ public class EnemyAI : MonoBehaviour {
     private Vector3 lastPosition;
     //
 
+    // Gravity
+    private float verticalVelocity;
+    private float gravity = -9.81f;
+    private float gravityMultiplier = 2f;
+    //
+
     private DifficultySettings currentSettings;
-    private NavMeshAgent agent;
     private Animator animator;
     private float timeSinceLastAttack;
     private float timeSinceLOS;
@@ -113,21 +118,12 @@ public class EnemyAI : MonoBehaviour {
     private static readonly int SearchHash = Animator.StringToHash("Search");
 
     private void Awake() {
-        agent = GetComponent<NavMeshAgent>();
         animator = GetComponent<Animator>();
 
         pathfinder = FindAnyObjectByType<Pathfinding>();
         if (pathfinder == null) Debug.LogError("Pathfinder is NULL");
 
-        if (agent != null) {
-            agent.updatePosition = false;
-            agent.updateRotation = false;
-            agent.isStopped = true; 
-        }
-
         UpdateDifficultySettings();
-
-        if (agent.speed == 0) agent.speed = baseChaseSpeed * currentSettings.chaseSpeedMultiplier; 
 
         if (player != null) {
             lastSeenPlayerPosition = player.position;
@@ -145,7 +141,7 @@ public class EnemyAI : MonoBehaviour {
         lastPosition = transform.position;
 
         Debug.Log($"{name}: {currentState}");
-        Debug.Log($"Is searching in place: {isSearchingInPlace}");
+        //Debug.Log($"Is searching in place: {isSearchingInPlace}");
         Debug.Log(searchTimer);
         float distanceToPlayer = Vector3.Distance(transform.position, player.position);
         bool hasLOS = HasLineOfSight();
@@ -159,6 +155,8 @@ public class EnemyAI : MonoBehaviour {
         effectiveAgrroRange = baseAggroRange * currentSettings.aggroRangeMultiplier;
         effectiveAttackRange = baseAttackRange * currentSettings.attackRangeMultiplier;
 
+        float giveUpRange = 2f;
+
         if (hasLOS) {
             lastSeenPlayerPosition = player.position;
         }
@@ -169,27 +167,27 @@ public class EnemyAI : MonoBehaviour {
                     SetState(State.Chase);
                 break;
             case State.Chase:
-                if (!hasLOS && distanceToPlayer <= effectiveAgrroRange)
-                    SetState(State.Search);
-                else if (distanceToPlayer > effectiveAgrroRange)
-                    SetState(State.Search);
-                else if (distanceToPlayer <= effectiveAttackRange && hasLOS)
+                if (hasLOS && distanceToPlayer <= effectiveAttackRange)
                     SetState(State.Attack);
-                break;
+                else if (!hasLOS)
+                    SetState(State.Search);
+                else if (distanceToPlayer > effectiveAgrroRange * giveUpRange)
+                    SetState(State.Patrol);
+                    break;
             case State.Attack:
                 if (!hasLOS && distanceToPlayer <= effectiveAgrroRange)
                     SetState(State.Search);
                 else if (distanceToPlayer > effectiveAgrroRange)
-                    SetState(State.Search);
-                else if (distanceToPlayer > effectiveAttackRange && hasLOS)
+                    SetState(State.Chase);
+                else if (hasLOS && distanceToPlayer > effectiveAttackRange)
                     SetState(State.Chase);
                 break;
             case State.Search:
-                if (hasLOS)
+                if (hasLOS && distanceToPlayer < effectiveAgrroRange * giveUpRange)
                     SetState(State.Chase);
-                else if (distanceToPlayer > effectiveAgrroRange * 2f)
+                else if (distanceToPlayer > effectiveAgrroRange * giveUpRange)
                     SetState(State.Patrol);
-                break;
+                    break;
         }
     }
 
@@ -228,18 +226,13 @@ public class EnemyAI : MonoBehaviour {
 
         switch (state) {
             case State.Patrol:
-                agent.isStopped = false;
                 StartPatrol();
                 break;
             case State.Chase:
-                agent.isStopped = false;
                 break;
             case State.Attack:
-                agent.isStopped = true;
-                agent.velocity = Vector3.zero;
                 break;
             case State.Search:
-                agent.isStopped = false;
                 searchTimer = 0f;
                 isSearchingInPlace = false;
                 RequestPath(lastSeenPlayerPosition);
@@ -263,18 +256,39 @@ public class EnemyAI : MonoBehaviour {
         Vector3 targetPoint = currentPath[currentPathIndex];
 
         Vector3 targetPosFlat = new Vector3(targetPoint.x, transform.position.y, targetPoint.z);
-        Vector3 myPosFlat = new Vector3(transform.position.x, transform.position.y, transform.position.z);
+        Vector3 newPosition = Vector3.MoveTowards(transform.position, targetPosFlat, speed * Time.deltaTime);
 
-        Vector3 direction = (targetPosFlat - myPosFlat).normalized;
-        transform.position += direction * speed * Time.deltaTime;
+        verticalVelocity += gravity * gravityMultiplier * Time.deltaTime;
 
-        if (direction != Vector3.zero) {
-            Quaternion lookRotation = Quaternion.LookRotation(direction);
-            float rotationSpeed = 10f;
-            transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, Time.deltaTime * rotationSpeed);
+        newPosition.y += verticalVelocity * Time.deltaTime;
+
+        RaycastHit hit;
+        Vector3 rayOrigin = newPosition + Vector3.up * 0.5f;
+
+        if (Physics.Raycast(rayOrigin, Vector3.down, out hit, 0.7f)) {
+            if (verticalVelocity < 0) {
+                verticalVelocity = -2f;
+            }
+            newPosition.y = hit.point.y;
         }
 
-        if (Vector3.Distance(myPosFlat, targetPosFlat) < 0.2f) {
+        transform.position = newPosition;
+
+        Vector3 direction = (targetPosFlat - transform.position).normalized;
+        direction.y = 0f;
+
+        if (direction.sqrMagnitude > 0.01f) {
+            Quaternion lookRotation = Quaternion.LookRotation(direction);
+            float rotationSpeed = 10f;
+            transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, rotationSpeed * Time.deltaTime);
+        }
+
+        float distanceToTarget = Vector2.Distance(
+            new Vector2(transform.position.x, transform.position.z),
+            new Vector2(targetPoint.x, targetPoint.z)
+        );
+
+        if (distanceToTarget < 0.2f) {
             currentPathIndex++;
         }
     }
@@ -378,7 +392,9 @@ public class EnemyAI : MonoBehaviour {
         float normalizedSpeed = speed / maxSpeed;
 
         if (normalizedSpeed < 0.05f) normalizedSpeed = 0f;
-        animator.SetFloat(SpeedHash, normalizedSpeed);
+
+        float dampTime = 0.1f;
+        animator.SetFloat(SpeedHash, normalizedSpeed, dampTime, Time.deltaTime);
     }
 
     private bool HasLineOfSight() {
@@ -398,7 +414,7 @@ public class EnemyAI : MonoBehaviour {
         if (hitPlayer && hit.transform.CompareTag("Player")) {
             lastLOSResult = true;
         } else lastLOSResult = false;
-        Debug.Log(lastLOSResult);
+        //Debug.Log(lastLOSResult);
         return lastLOSResult;
     }
 
@@ -418,7 +434,7 @@ public class EnemyAI : MonoBehaviour {
         if (currentPath != null) {
             Gizmos.color = Color.blue;
             for (int i = currentPathIndex; i < currentPath.Count; i++) {
-                Gizmos.DrawLine(currentPath[i], currentPath[i + 1]);
+                //Gizmos.DrawLine(currentPath[i], currentPath[i + 1]);
             }
         }
     }

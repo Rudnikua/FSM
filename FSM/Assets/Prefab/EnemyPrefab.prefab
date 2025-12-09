@@ -44,10 +44,8 @@ GameObject:
   - component: {fileID: 8005510454965693035}
   - component: {fileID: 7243060461346549127}
   - component: {fileID: 1750265217482241313}
-  - component: {fileID: 7362523965210130718}
   - component: {fileID: 8440339179508617595}
   - component: {fileID: 6114364093466718251}
-  - component: {fileID: 4025866928695677638}
   m_Layer: 6
   m_Name: EnemyPrefab
   m_TagString: Enemy
@@ -140,35 +138,16 @@ MonoBehaviour:
     chaseSpeedMultiplier: 1
   player: {fileID: 0}
   patrolPoints: []
-  aggroRange: 7
-  attackRange: 2
+  baseAggroRange: 7
+  baseAttackRange: 2
   lineOfSightCheckRate: 0.3
-  attackCD: 2
+  baseAttackCD: 2
   patrolWaitTime: 1
   patrolPointRadius: 0.5
-  searchDuration: 3
---- !u!195 &7362523965210130718
-NavMeshAgent:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7527264755415998078}
-  m_Enabled: 1
-  m_AgentTypeID: 0
-  m_Radius: 0.5
-  m_Speed: 3.5
-  m_Acceleration: 8
-  avoidancePriority: 50
-  m_AngularSpeed: 120
-  m_StoppingDistance: 0
-  m_AutoTraverseOffMeshLink: 1
-  m_AutoBraking: 1
-  m_AutoRepath: 1
-  m_Height: 2
-  m_BaseOffset: 0
-  m_WalkableMask: 4294967295
-  m_ObstacleAvoidanceType: 4
+  baseSpeed: 3.5
+  basePatrolSpeed: 3.5
+  baseChaseSpeed: 4
+  baseSearchDuration: 3
 --- !u!114 &8440339179508617595
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -196,26 +175,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DisableEnableCollider
   currentWeaponInHand: {fileID: 3500404098858193248}
---- !u!114 &4025866928695677638
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7527264755415998078}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1e3fdca004f2d45fe8abbed571a8abd5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshModifier
-  m_SerializedVersion: 0
-  m_OverrideArea: 0
-  m_Area: 0
-  m_OverrideGenerateLinks: 0
-  m_GenerateLinks: 0
-  m_IgnoreFromBuild: 1
-  m_ApplyToChildren: 1
-  m_AffectedAgents: ffffffff
 --- !u!1001 &820854035083991723
 PrefabInstance:
   m_ObjectHideFlags: 0
