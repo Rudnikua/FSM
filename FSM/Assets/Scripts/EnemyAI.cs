@@ -67,6 +67,9 @@ public class EnemyAI : MonoBehaviour {
     [SerializeField] private Transform player;
     [SerializeField] private Transform[] patrolPoints;
 
+    [Header("Ground Check")]
+    [SerializeField] private LayerMask groundLayer;
+
     [Header("Detection (Base Values)")]
     [SerializeField] private float baseAggroRange = 7f;
     [SerializeField] private float baseAttackRange = 2f;
@@ -77,10 +80,8 @@ public class EnemyAI : MonoBehaviour {
 
     [Header("Patrol")]
     [SerializeField] private float patrolWaitTime = 1f;
-    [SerializeField] private float patrolPointRadius = 0.5f;
 
     [Header("Patrol & Search (Base Values)")]
-    [SerializeField] private float baseSpeed = 3.5f;
     [SerializeField] private float basePatrolSpeed = 3.5f;
     [SerializeField] private float baseChaseSpeed = 4f;
     [SerializeField] private float baseSearchDuration = 3f;
@@ -133,6 +134,7 @@ public class EnemyAI : MonoBehaviour {
     }
 
     private void Start() {
+        SnapToGround();
         StartPatrol();
     }
 
@@ -260,16 +262,29 @@ public class EnemyAI : MonoBehaviour {
 
         verticalVelocity += gravity * gravityMultiplier * Time.deltaTime;
 
-        newPosition.y += verticalVelocity * Time.deltaTime;
+        float rayStartHeight = 2.0f; 
+        float rayLength = 5.0f;      
 
+        Vector3 rayOrigin = newPosition + Vector3.up * rayStartHeight;
         RaycastHit hit;
-        Vector3 rayOrigin = newPosition + Vector3.up * 0.5f;
 
-        if (Physics.Raycast(rayOrigin, Vector3.down, out hit, 0.7f)) {
-            if (verticalVelocity < 0) {
-                verticalVelocity = -2f;
+        Debug.DrawRay(rayOrigin, Vector3.down * rayLength, Color.magenta);
+
+        if (Physics.Raycast(rayOrigin, Vector3.down, out hit, rayLength, groundLayer)) {
+            float groundHeight = hit.point.y;
+
+            float potentialY = newPosition.y + (verticalVelocity * Time.deltaTime);
+
+            if (potentialY <= groundHeight) {
+                newPosition.y = groundHeight; 
+                if (verticalVelocity < 0) {
+                    verticalVelocity = -2f;
+                }
+            } else {
+                newPosition.y = potentialY;
             }
-            newPosition.y = hit.point.y;
+        } else {
+            newPosition.y += verticalVelocity * Time.deltaTime;
         }
 
         transform.position = newPosition;
@@ -416,6 +431,13 @@ public class EnemyAI : MonoBehaviour {
         } else lastLOSResult = false;
         //Debug.Log(lastLOSResult);
         return lastLOSResult;
+    }
+    private void SnapToGround() {
+        RaycastHit hit;
+        if (Physics.Raycast(transform.position + Vector3.up * 5f, Vector3.down, out hit, 20f, groundLayer)) {
+            transform.position = hit.point;
+            verticalVelocity = 0;
+        }
     }
 
     private void OnDrawGizmosSelected() {

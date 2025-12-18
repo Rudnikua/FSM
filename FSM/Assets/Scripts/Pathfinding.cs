@@ -11,6 +11,8 @@ public class Pathfinding : MonoBehaviour {
         Node startNode = grid.NodeFromWorldPoint(startPos);
         Node targetNode = grid.NodeFromWorldPoint(targetPos);
 
+        if (startNode == null || targetNode == null) return null;
+
         if (!targetNode.walkable) {
             targetNode = FindClosestWalkableNode(targetNode);
         }
@@ -42,6 +44,7 @@ public class Pathfinding : MonoBehaviour {
                 }
 
                 int newMovementCostToNeighbour = currentNode.gCost + GetDistance(currentNode, neighbour);
+
                 if (newMovementCostToNeighbour < neighbour.gCost || !openSet.Contains(neighbour)) {
                     neighbour.gCost = newMovementCostToNeighbour;
                     neighbour.hCost = GetDistance(neighbour, targetNode);

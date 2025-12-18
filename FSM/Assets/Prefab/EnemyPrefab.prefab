@@ -138,6 +138,11 @@ MonoBehaviour:
     chaseSpeedMultiplier: 1
   player: {fileID: 0}
   patrolPoints: []
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 1537
+  groundCheckOffset: 1
+  groundCheckDistance: 2
   baseAggroRange: 7
   baseAttackRange: 2
   lineOfSightCheckRate: 0.3
